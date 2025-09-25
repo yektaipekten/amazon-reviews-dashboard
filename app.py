@@ -22,12 +22,48 @@ if APP_PASSWORD:
         st.stop()
 
 st.title("📊 Amazon Reviews Dashboard")
-st.write("Click **Fetch Reviews** to pull ratings & breakdown from Amazon (Poland).")
+st.write("Click **Fetch Reviews** to pull ratings & breakdown from Amazon.")
 
 # Small UI for ASIN input (you can paste full list or keep repo-managed list)
 asins_text = st.text_area("ASINs (one per line)", height=150,
                          value="B0DNKXYG1X\nB0D7J5NNJY")  # default small example
 ASINS = [a.strip() for a in asins_text.splitlines() if a.strip()]
+
+mapping_dict = {}
+mapping_loaded = False
+mapping_path = "ASINs.csv"
+if os.path.exists(mapping_path):
+    try:
+        # try reading with header first
+        map_df = pd.read_csv(mapping_path, dtype=str)
+        # normalize column names
+        map_df.columns = [c.strip() for c in map_df.columns]
+        if "ASIN" not in map_df.columns:
+            # file likely has no header — read without header and assign columns
+            map_df = pd.read_csv(mapping_path, header=None, dtype=str)
+            # assign column names based on available columns
+            if map_df.shape[1] == 1:
+                map_df.columns = ["ASIN"]
+                map_df["Design"] = None
+                map_df["Size"] = None
+            elif map_df.shape[1] == 2:
+                map_df.columns = ["ASIN", "Design"]
+                map_df["Size"] = None
+            else:
+                map_df.columns = ["ASIN", "Design", "Size"] + list(map_df.columns[3:])
+        # ensure required cols exist
+        if "Design" not in map_df.columns:
+            map_df["Design"] = None
+        if "Size" not in map_df.columns:
+            map_df["Size"] = None
+        # normalize ASIN values
+        map_df["ASIN"] = map_df["ASIN"].astype(str).str.strip().str.upper()
+        # build dict: {ASIN: {"Design": val, "Size": val}}
+        mapping_dict = map_df.set_index("ASIN")[["Design", "Size"]].T.to_dict()
+        mapping_loaded = True
+        st.info(f"Loaded mapping from {mapping_path} ({len(mapping_dict)} rows).")
+    except Exception as e:
+        st.warning(f"Could not read mapping file {mapping_path}: {e}")
 
 if st.button("Fetch Reviews"):
     if not API_KEY:
@@ -44,9 +80,12 @@ if st.button("Fetch Reviews"):
         for i, asin in enumerate(ASINS, start=1):
             with st.spinner(f"Fetching {asin} ({i}/{total})"):
                 url = "https://api.rainforestapi.com/request"
-                params = {"api_key": API_KEY, "type": "product", "amazon_domain": MARKTETPLACE if False else "amazon.pl", "asin": asin}
-                # Note: using direct string to avoid accidental var name bug
-                params = {"api_key": API_KEY, "type": "product", "amazon_domain": "amazon.pl", "asin": asin}
+                params = {
+                    "api_key": API_KEY,
+                    "type": "product",
+                    "amazon_domain": MARKETPLACE,
+                    "asin": asin
+                }
                 try:
                     r = requests.get(url, params=params, timeout=30)
                     data = r.json()
@@ -56,24 +95,43 @@ if st.button("Fetch Reviews"):
                     credits_remaining = info.get("credits_remaining", credits_remaining)
 
                     product = data.get("product", {})
+                    # default values
+                    design = None
+                    size = None
+
+                    # first try to extract from API if available
+                    if product:
+                        for spec in product.get("specifications", []):
+                            name = spec.get("name", "").lower()
+                            val = spec.get("value")
+                            if val is None:
+                                continue
+                            if "rozmiar" in name or "size" in name:
+                                if not size:
+                                    size = val
+                            if "colour" in name or "color" in name or "dedesignsen" in name:
+                                if not design:
+                                    design = val
+
+                    # if mapping loaded and ASIN matches, override design/size with mapping values
+                    map_entry = mapping_dict.get(asin.strip().upper())
+                    if map_entry:
+                        # map_entry contains {"Design": ..., "Size": ...}
+                        m_design = map_entry.get("Design")
+                        m_size = map_entry.get("Size")
+                        # use mapping value if it's not empty/NaN
+                        if pd.notna(m_design) and str(m_design).strip() != "":
+                            design = m_design
+                        if pd.notna(m_size) and str(m_size).strip() != "":
+                            size = m_size
+
                     if not product or "rating" not in product:
                         results.append({
-                            "ASIN": asin, "Design": None, "Size": None,
+                            "ASIN": asin, "Design": design, "Size": size,
                             "Average Rating": None, "Total Reviews": None,
                             "5★": None, "4★": None, "3★": None, "2★": None, "1★": None,
                         })
                     else:
-                        # extract small spec fields
-                        design = None
-                        size = None
-                        for spec in product.get("specifications", []):
-                            name = spec.get("name", "").lower()
-                            val = spec.get("value")
-                            if "rozmiar" in name or "size" in name:
-                                size = val
-                            if "kolor" in name or "color" in name or "desen" in name:
-                                design = val
-
                         br = product.get("rating_breakdown", {})
                         results.append({
                             "ASIN": asin,
@@ -110,4 +168,4 @@ if st.button("Fetch Reviews"):
         out = BytesIO()
         df.to_excel(out, index=False)
         st.download_button("⬇️ Download Excel", data=out.getvalue(), file_name="asin_reviews.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                           mime="application/vnd.openxmlformats-officedocument-spreadsheetml.sheet")
