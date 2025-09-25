@@ -26,7 +26,7 @@ st.write("Click **Fetch Reviews** to pull ratings & breakdown from Amazon.")
 
 # Small UI for ASIN input (you can paste full list or keep repo-managed list)
 asins_text = st.text_area("ASINs (one per line)", height=150,
-                         value="B0DNKXYG1X\nB0D7J5NNJY")  # default small example
+                         value="B0DNKXYG1X\nB0D7J5NNJY")  # ASINs
 ASINS = [a.strip() for a in asins_text.splitlines() if a.strip()]
 
 mapping_dict = {}
@@ -156,16 +156,111 @@ if st.button("Fetch Reviews"):
             progress.progress(i / total)
             time.sleep(0.5)  # keep reasonable pacing
 
+        # --- START: aggregation, totals row, summary and Excel export ---
         df = pd.DataFrame(results)
+
+        # Ensure numeric types where appropriate
+        df['Average Rating'] = pd.to_numeric(df.get('Average Rating'), errors='coerce')
+        df['Total Reviews'] = pd.to_numeric(df.get('Total Reviews'), errors='coerce')
+
+        # Ensure star columns exist and numeric
+        star_cols = ["5★", "4★", "3★", "2★", "1★"]
+        for col in star_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+            else:
+                df[col] = 0
+
+        # Aggregations
+        # Unweighted mean (mean of ASIN average ratings)
+        unweighted_mean = None
+        if df['Average Rating'].dropna().size > 0:
+            unweighted_mean = round(df['Average Rating'].dropna().mean(), 3)
+
+        # Weighted mean (by Total Reviews)
+        weighted_mean = None
+        total_reviews_sum = int(df['Total Reviews'].dropna().sum()) if df['Total Reviews'].dropna().size > 0 else 0
+        if total_reviews_sum > 0:
+            weighted_val = (df['Average Rating'].fillna(0) * df['Total Reviews'].fillna(0)).sum()
+            weighted_mean = round(weighted_val / total_reviews_sum, 3)
+
+        # Star totals
+        total_5 = int(df["5★"].sum())
+        total_4 = int(df["4★"].sum())
+        total_3 = int(df["3★"].sum())
+        total_2 = int(df["2★"].sum())
+        total_1 = int(df["1★"].sum())
+
+        # Create totals row (unweighted mean placed under Average Rating as requested)
+        totals_row = {
+            "ASIN": "GRAND TOTAL",
+            "Design": None,
+            "Size": None,
+            "Average Rating": unweighted_mean,
+            "Total Reviews": total_reviews_sum,
+            "5★": total_5,
+            "4★": total_4,
+            "3★": total_3,
+            "2★": total_2,
+            "1★": total_1
+        }
+
+        # Ensure all keys exist in df columns
+        for k in totals_row.keys():
+            if k not in df.columns:
+                df[k] = None
+
+        # Append totals row
+        df_with_totals = pd.concat([df, pd.DataFrame([totals_row])], ignore_index=True)
+
+        # Streamlit summary display
+        st.markdown("### Summary")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Unweighted avg (mean of ASIN averages)", unweighted_mean if unweighted_mean is not None else "N/A")
+        c2.metric("Weighted avg (by total reviews)", weighted_mean if weighted_mean is not None else "N/A")
+        c3.metric("Total reviews (sum)", total_reviews_sum)
+
+        # Star breakdown table + chart
+        star_df = pd.DataFrame({
+            "Stars": ["5★", "4★", "3★", "2★", "1★"],
+            "Count": [total_5, total_4, total_3, total_2, total_1]
+        })
+        st.write("**Star counts (sum across ASINs):**")
+        st.table(star_df)
+        st.bar_chart(star_df.set_index("Stars"))
+
+        # Show full results with totals row
         st.subheader("Results")
-        st.dataframe(df)
+        st.dataframe(df_with_totals)
+
+        # Prepare Excel with Details + Summary sheets
+        out = BytesIO()
+        try:
+            with pd.ExcelWriter(out, engine="openpyxl") as writer:
+                # Details sheet (with grand total row)
+                df_with_totals.to_excel(writer, index=False, sheet_name="Details")
+                # Summary sheet
+                summary_dict = {
+                    "Metric": ["Unweighted mean", "Weighted mean", "Total reviews sum", "Total 5★", "Total 4★", "Total 3★", "Total 2★", "Total 1★"],
+                    "Value": [unweighted_mean, weighted_mean, total_reviews_sum, total_5, total_4, total_3, total_2, total_1]
+                }
+                pd.DataFrame(summary_dict).to_excel(writer, index=False, sheet_name="Summary")
+                writer.save()
+            out.seek(0)
+            st.download_button("⬇️ Download Excel (Details + Summary)", data=out.getvalue(),
+                               file_name="asin_reviews_with_totals.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        except Exception as e:
+            # fallback: simple single-sheet excel if openpyxl not available
+            out2 = BytesIO()
+            df_with_totals.to_excel(out2, index=False)
+            out2.seek(0)
+            st.warning(f"Could not create multi-sheet Excel (openpyxl required). Error: {e}. Providing single-sheet export.")
+            st.download_button("⬇️ Download Excel (single sheet)", data=out2.getvalue(),
+                               file_name="asin_reviews.xlsx",
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        # --- END: aggregation, totals row, summary and Excel export ---
 
         # show credits info if available
         if credits_remaining is not None:
             st.info(f"Credits used in last response: {credits_used}; Credits remaining (approx): {credits_remaining}")
-
-        # download excel
-        out = BytesIO()
-        df.to_excel(out, index=False)
-        st.download_button("⬇️ Download Excel", data=out.getvalue(), file_name="asin_reviews.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument-spreadsheetml.sheet")
