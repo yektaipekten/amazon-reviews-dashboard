@@ -245,20 +245,23 @@ if st.button("Fetch Reviews"):
                     "Value": [unweighted_mean, weighted_mean, total_reviews_sum, total_5, total_4, total_3, total_2, total_1]
                 }
                 pd.DataFrame(summary_dict).to_excel(writer, index=False, sheet_name="Summary")
-                writer.save()
+                
             out.seek(0)
             st.download_button("⬇️ Download Excel (Details + Summary)", data=out.getvalue(),
                                file_name="asin_reviews_with_totals.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception as e:
+            st.error("Could not create multi-sheet Excel. Please ensure 'openpyxl' is installed.")
+            out2 = BytesIO()
+            df_with_totals.to_excel(out2, index=False)
+            out2.seek(0)
+            st.download_button("⬇️ Download Excel (single sheet)", data=out2.getvalue(),
+                       file_name="asin_reviews.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             # fallback: simple single-sheet excel if openpyxl not available
             out2 = BytesIO()
             df_with_totals.to_excel(out2, index=False)
             out2.seek(0)
-            st.warning(f"Could not create multi-sheet Excel (openpyxl required). Error: {e}. Providing single-sheet export.")
-            st.download_button("⬇️ Download Excel (single sheet)", data=out2.getvalue(),
-                               file_name="asin_reviews.xlsx",
-                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         # --- END: aggregation, totals row, summary and Excel export ---
 
         # show credits info if available
