@@ -6,7 +6,7 @@ import requests
 import time
 from io import BytesIO
 
-st.set_page_config(page_title="Amazon Reviews Dashboard", layout="wide")
+st.set_page_config(page_title="artyrugs Ratings & Reviews", layout="wide")
 
 # ---- CONFIG ----
 # Read API key from Streamlit secrets or environment
@@ -21,12 +21,12 @@ if APP_PASSWORD:
     if pw != APP_PASSWORD:
         st.stop()
 
-st.title("📊 Amazon Reviews Dashboard")
+st.title("📊 artyrugs Ratings & Reviews")
 st.write("Click **Fetch Reviews** to pull ratings & breakdown from Amazon.")
 
 # Small UI for ASIN input (you can paste full list or keep repo-managed list)
 asins_text = st.text_area("ASINs (one per line)", height=150,
-                         value="B0DNKXYG1X\nB0D7J5NNJY")  # ASINs
+                         value="B0D7J69H1L\nB0D7J7MV6G \nB0D7J71G7J")  # ASINs
 ASINS = [a.strip() for a in asins_text.splitlines() if a.strip()]
 
 mapping_dict = {}
@@ -247,16 +247,16 @@ if st.button("Fetch Reviews"):
                 pd.DataFrame(summary_dict).to_excel(writer, index=False, sheet_name="Summary")
                 
             out.seek(0)
-            st.download_button("⬇️ Download Excel (Details + Summary)", data=out.getvalue(),
-                               file_name="asin_reviews_with_totals.xlsx",
+            st.download_button("⬇️ Download artyrugs Ratings&Reviews Report", data=out.getvalue(),
+                               file_name="artyrugs_ratings&reviews.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         except Exception as e:
             st.error("Could not create multi-sheet Excel. Please ensure 'openpyxl' is installed.")
             out2 = BytesIO()
             df_with_totals.to_excel(out2, index=False)
             out2.seek(0)
-            st.download_button("⬇️ Download Excel (single sheet)", data=out2.getvalue(),
-                       file_name="asin_reviews.xlsx",
+            st.download_button("⬇️ Download artyrugs Ratings&Reviews Report", data=out2.getvalue(),
+                       file_name="artyrugs_Ratings&Reviews.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             # fallback: simple single-sheet excel if openpyxl not available
             out2 = BytesIO()
