@@ -11,7 +11,7 @@ st.set_page_config(page_title="Amazon Reviews Dashboard", layout="wide")
 # ---- CONFIG ----
 # Read API key from Streamlit secrets or environment
 API_KEY = st.secrets.get("RAINFOREST_API_KEY") or os.environ.get("RAINFOREST_API_KEY")
-MARKETPLACE = "amazon.pl"
+MARKETPLACE = "amazon.uk"
 
 # Optional simple password protection (set APP_PASSWORD in Streamlit secrets)
 APP_PASSWORD = st.secrets.get("APP_PASSWORD")  # optional
@@ -44,9 +44,9 @@ if st.button("Fetch Reviews"):
         for i, asin in enumerate(ASINS, start=1):
             with st.spinner(f"Fetching {asin} ({i}/{total})"):
                 url = "https://api.rainforestapi.com/request"
-                params = {"api_key": API_KEY, "type": "product", "amazon_domain": MARKTETPLACE if False else "amazon.pl", "asin": asin}
+                params = {"api_key": API_KEY, "type": "product", "amazon_domain": MARKTETPLACE if False else "amazon.uk", "asin": asin}
                 # Note: using direct string to avoid accidental var name bug
-                params = {"api_key": API_KEY, "type": "product", "amazon_domain": "amazon.pl", "asin": asin}
+                params = {"api_key": API_KEY, "type": "product", "amazon_domain": "amazon.uk", "asin": asin}
                 try:
                     r = requests.get(url, params=params, timeout=30)
                     data = r.json()
